@@ -67,8 +67,13 @@ static void atualizarAnimacao(Player *p, float dt) {
     }
 
     if (p->velX > 0) {
+<<<<<<< HEAD
         if (p->tempoAnimacao >= 0.12f) {
             p->animIndex = (p->animIndex + 1) % 4;
+=======
+        if (p->tempoAnimacao >= 0.14f) {
+            p->animIndex = (p->animIndex + 1) % 3;
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
             p->tempoAnimacao = 0;
         }
 
@@ -77,8 +82,13 @@ static void atualizarAnimacao(Player *p, float dt) {
     }
 
     if (p->velX < 0) {
+<<<<<<< HEAD
         if (p->tempoAnimacao >= 0.12f) {
             p->animIndex = (p->animIndex + 1) % 4;
+=======
+        if (p->tempoAnimacao >= 0.14f) {
+            p->animIndex = (p->animIndex + 1) % 3;
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
             p->tempoAnimacao = 0;
         }
 
@@ -87,19 +97,35 @@ static void atualizarAnimacao(Player *p, float dt) {
     }
 
     if (p->tempoAnimacao >= 0.35f) {
+<<<<<<< HEAD
         p->animIndex = (p->animIndex + 1) % 4;
         p->tempoAnimacao = 0;
     }
 
     p->frameAtual = PLAYER_IDLE_1 + p->animIndex;
+=======
+        p->animIndex = (p->animIndex + 1) % 3;
+        p->tempoAnimacao = 0;
+    }
+
+    if (p->animIndex == 0) p->frameAtual = PLAYER_IDLE_1;
+    if (p->animIndex == 1) p->frameAtual = PLAYER_IDLE_2;
+    if (p->animIndex == 2) p->frameAtual = PLAYER_IDLE_3;
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
 }
 
 void atualizarPlayer(Player *p, float dt) {
     if (p->estado == PLAYER_GAME_OVER) return;
 
     if (p->estado == PLAYER_FANTASMA) {
+<<<<<<< HEAD
         p->frameAtual = PLAYER_MORTE;
         p->tempoFantasma += dt;
+=======
+        p->frameAtual = PLAYER_FANTASMA_FRAME;
+        p->tempoFantasma += dt;
+        p->y -= 40 * dt;
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
 
         if (p->tempoFantasma >= 2.0f) {
             p->estado = PLAYER_GAME_OVER;
@@ -138,6 +164,7 @@ void atualizarPlayer(Player *p, float dt) {
     }
 
     p->velY += 850 * dt;
+<<<<<<< HEAD
 
     p->x += p->velX * dt;
     p->y += p->velY * dt;
@@ -150,12 +177,22 @@ void atualizarPlayer(Player *p, float dt) {
         p->x = MAP_COLUNAS * TILE - PLAYER_LARGURA;
     }
 
+=======
+    p->x += p->velX * dt;
+    p->y += p->velY * dt;
+
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
     resolverColisaoVertical(p);
 
     if (p->y > 600) {
         playerTomarDano(p);
+<<<<<<< HEAD
         p->x = 0;
         p->y = 320;
+=======
+        p->x = 64;
+        p->y = 288;
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
     }
 
     atualizarAnimacao(p, dt);
@@ -171,11 +208,15 @@ void playerTomarDano(Player *p) {
     if (p->vidas <= 0) {
         p->estado = PLAYER_FANTASMA;
         p->tempoFantasma = 0;
+<<<<<<< HEAD
         p->frameAtual = PLAYER_MORTE;
+=======
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
     }
 }
 
 void desenharPlayer(Player p, Texture2D sprite) {
+<<<<<<< HEAD
     Rectangle origem = {
         p.frameAtual * PLAYER_LARGURA,
         0,
@@ -183,5 +224,8 @@ void desenharPlayer(Player p, Texture2D sprite) {
         PLAYER_ALTURA
     };
 
+=======
+    Rectangle origem = {p.frameAtual * PLAYER_LARGURA, 0, PLAYER_LARGURA, PLAYER_ALTURA};
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
     DrawTextureRec(sprite, origem, (Vector2){p.x, p.y}, WHITE);
 }

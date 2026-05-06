@@ -7,12 +7,27 @@
 #define ENEMY_LARGURA 32
 #define ENEMY_ALTURA 32
 
+<<<<<<< HEAD
 #define HOMEM_SACO_IDLE 0
 #define HOMEM_SACO_ATTACK_L 1
 #define HOMEM_SACO_ATTACK_R 2
 
 typedef enum {
     INIMIGO_HOMEM_SACO_AREIA
+=======
+#define BOCA_IDLE 0
+#define BOCA_ATTACK_R 1
+#define BOCA_ATTACK_L 3
+#define BOCA_FANTASMA 4
+#define CRIANCA_IDLE 5
+#define CRIANCA_ATTACK_L 6
+#define CRIANCA_ATTACK_R 7
+#define CRIANCA_FANTASMA 8
+
+typedef enum {
+    INIMIGO_BOCA_DE_OURO,
+    INIMIGO_CRIANCA_FANTASMA
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
 } TipoInimigo;
 
 typedef enum {

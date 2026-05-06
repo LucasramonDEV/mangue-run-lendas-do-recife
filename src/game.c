@@ -3,6 +3,7 @@
 #include "player.h"
 #include "map.h"
 #include "enemy.h"
+<<<<<<< HEAD
 #include "item.h"
 #include <string.h>
 #include <stdio.h>
@@ -54,6 +55,10 @@ static void salvarPerfis(char perfis[QTD_PERFIS][MAX_NOME + 1]) {
 
     fclose(arquivo);
 }
+=======
+#include "projectile.h"
+#include "item.h"
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
 
 static void desenharHUD(Player player, Texture2D heartTexture) {
     Rectangle origem = {0, 0, 32, 32};
@@ -63,6 +68,7 @@ static void desenharHUD(Player player, Texture2D heartTexture) {
     }
 }
 
+<<<<<<< HEAD
 static int botao(Rectangle rec, const char *texto) {
     Vector2 mouse = GetMousePosition();
     int hover = CheckCollisionPointRec(mouse, rec);
@@ -309,11 +315,49 @@ static void rodarJogo(Player *player, Camera2D *camera, Texture2D bg, Texture2D 
             *tempoGameOver = 0;
             *tela = TELA_MENU_INICIAL;
         }
+=======
+static void verificarTiros(Player *player) {
+    Projectile *p = getListaProjeteis();
+    Projectile *proxProjetil;
+
+    while (p != NULL) {
+        proxProjetil = p->prox;
+
+        Rectangle projRec = {p->x, p->y, 16, 16};
+
+        if (p->tipo == PROJETIL_PERSONAGEM) {
+            Enemy *e = getListaInimigos();
+
+            while (e != NULL) {
+                if (e->estado == INIMIGO_VIVO) {
+                    Rectangle enemyRec = {e->x, e->y, 32, 32};
+
+                    if (CheckCollisionRecs(projRec, enemyRec)) {
+                        inimigoVirarFantasma(e);
+                        removerProjetil(p);
+                        break;
+                    }
+                }
+
+                e = e->prox;
+            }
+        } else {
+            Rectangle playerRec = getPlayerRect(*player);
+
+            if (CheckCollisionRecs(projRec, playerRec)) {
+                playerTomarDano(player);
+                removerProjetil(p);
+            }
+        }
+
+        p = proxProjetil;
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
     }
 }
 
 void iniciarJogo(void) {
     InitWindow(800, 450, "Mangue Run: Lendas do Recife");
+<<<<<<< HEAD
     SetWindowState(FLAG_WINDOW_RESIZABLE);
     SetTargetFPS(60);
 
@@ -339,23 +383,70 @@ void iniciarJogo(void) {
 
     Player player = criarPlayer(0, 320);
     player.vidas = 3;
+=======
+    SetTargetFPS(60);
+
+    Texture2D playerSprite = LoadTexture("assets/playerMODEL.png");
+    Texture2D bgMarco = LoadTexture("assets/bg_marco.png");
+    Texture2D bgBomJesus = LoadTexture("assets/bg_bom_jesus.png");
+    Texture2D tilesetSprite = LoadTexture("assets/RecAntigoTiles.png");
+    Texture2D enemiesSprite = LoadTexture("assets/RecifeAntigoEnemys.png");
+    Texture2D notaSprite = LoadTexture("assets/DisparoPersonagem.png");
+    Texture2D tiroInimigoSprite = LoadTexture("assets/DisparoInimigo.png");
+    Texture2D heartSprite = LoadTexture("assets/heart.png");
+
+    Player player = criarPlayer(64, 288);
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
 
     carregarMapa();
     carregarItens();
     carregarInimigos();
 
     Camera2D camera = {0};
+<<<<<<< HEAD
     camera.rotation = 0;
     camera.zoom = 1.20f;
 
     while (!WindowShouldClose()) {
         if (IsKeyPressed(KEY_F11)) {
             ToggleFullscreen();
+=======
+    camera.target = (Vector2){player.x, player.y};
+    camera.offset = (Vector2){400, 225};
+    camera.rotation = 0;
+    camera.zoom = 1.5f;
+
+    while (!WindowShouldClose()) {
+        float dt = GetFrameTime();
+
+        if (player.estado == PLAYER_VIVO) {
+            if (IsKeyPressed(KEY_L)) {
+                dispararProjetil(player.x + 28, player.y + 15, 1, PROJETIL_PERSONAGEM);
+            }
+
+            if (IsKeyPressed(KEY_K)) {
+                dispararProjetil(player.x - 10, player.y + 15, -1, PROJETIL_PERSONAGEM);
+            }
+        }
+
+        atualizarPlayer(&player, dt);
+        atualizarProjeteis(dt);
+        atualizarInimigos(&player, dt);
+        atualizarItens(&player);
+        verificarTiros(&player);
+
+        camera.target = (Vector2){player.x + 16, player.y + 16};
+
+        if (camera.target.x < 400 / camera.zoom) camera.target.x = 400 / camera.zoom;
+        if (camera.target.x > MAP_COLUNAS * TILE - (400 / camera.zoom)) {
+            camera.target.x = MAP_COLUNAS * TILE - (400 / camera.zoom);
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
         }
 
         BeginDrawing();
         ClearBackground(BLACK);
 
+<<<<<<< HEAD
         if (tela == TELA_MENU_INICIAL) {
             telaMenuInicial(&tela);
         } else if (tela == TELA_LISTA_PERFIS) {
@@ -369,11 +460,34 @@ void iniciarJogo(void) {
         } else if (tela == TELA_JOGO) {
             rodarJogo(&player, &camera, bg, tileChao, tileBloco, tilePlataforma,
                       enemyShooter, heartSprite, playerSprite, &tela, perfis, &tempoGameOver);
+=======
+        if (player.x < 40 * TILE) {
+            DrawTexture(bgMarco, 0, 0, WHITE);
+        } else {
+            DrawTexture(bgBomJesus, 0, 0, WHITE);
+        }
+
+        BeginMode2D(camera);
+
+        desenharMapa(tilesetSprite);
+        desenharItens(heartSprite);
+        desenharInimigos(enemiesSprite);
+        desenharProjeteis(notaSprite, tiroInimigoSprite);
+        desenharPlayer(player, playerSprite);
+
+        EndMode2D();
+
+        desenharHUD(player, heartSprite);
+
+        if (player.estado == PLAYER_GAME_OVER) {
+            DrawText("GAME OVER", 280, 180, 50, RED);
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
         }
 
         EndDrawing();
     }
 
+<<<<<<< HEAD
     salvarPerfis(perfis);
 
     UnloadTexture(playerSprite);
@@ -382,6 +496,15 @@ void iniciarJogo(void) {
     UnloadTexture(tileBloco);
     UnloadTexture(tilePlataforma);
     UnloadTexture(enemyShooter);
+=======
+    UnloadTexture(playerSprite);
+    UnloadTexture(bgMarco);
+    UnloadTexture(bgBomJesus);
+    UnloadTexture(tilesetSprite);
+    UnloadTexture(enemiesSprite);
+    UnloadTexture(notaSprite);
+    UnloadTexture(tiroInimigoSprite);
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
     UnloadTexture(heartSprite);
 
     CloseWindow();

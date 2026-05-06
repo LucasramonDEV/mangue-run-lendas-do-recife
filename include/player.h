@@ -9,6 +9,7 @@
 #define PLAYER_IDLE_1 0
 #define PLAYER_IDLE_2 1
 #define PLAYER_IDLE_3 2
+<<<<<<< HEAD
 #define PLAYER_IDLE_4 3
 
 #define PLAYER_WALK_R_1 4
@@ -27,6 +28,20 @@
 #define PLAYER_MORTE 15
 #define PLAYER_ATTACK_R 16
 #define PLAYER_ATTACK_L 17
+=======
+#define PLAYER_WALK_R_1 3
+#define PLAYER_WALK_R_2 4
+#define PLAYER_WALK_R_3 5
+#define PLAYER_WALK_L_1 7
+#define PLAYER_WALK_L_2 8
+#define PLAYER_WALK_L_3 9
+#define PLAYER_JUMP 11
+#define PLAYER_FALL 12
+#define PLAYER_DANO 13
+#define PLAYER_FANTASMA_FRAME 14
+#define PLAYER_ATTACK_R 15
+#define PLAYER_ATTACK_L 16
+>>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
 
 typedef enum {
     PLAYER_VIVO,
