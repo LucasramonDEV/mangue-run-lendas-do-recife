@@ -1,14 +1,6 @@
-<<<<<<< HEAD
-#include "projectile.h"
-#include "map.h"
-#include "raylib.h"
-#include <stddef.h>
-#include <stdlib.h>
-=======
 #include <stdlib.h>
 #include "projectile.h"
 #include "map.h"
->>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
 
 static Projectile *listaProjeteis = NULL;
 
@@ -18,10 +10,6 @@ Projectile *getListaProjeteis(void) {
 
 void dispararProjetil(float x, float y, int direcao, TipoProjetil tipo) {
     Projectile *novo = malloc(sizeof(Projectile));
-<<<<<<< HEAD
-
-=======
->>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
     if (novo == NULL) return;
 
     novo->x = x;
@@ -60,10 +48,6 @@ void atualizarProjeteis(float dt) {
 
     while (p != NULL) {
         prox = p->prox;
-<<<<<<< HEAD
-
-=======
->>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
         p->x += p->velX * dt;
 
         if (p->x < -100 || p->x > MAP_COLUNAS * TILE + 100) {
@@ -77,13 +61,7 @@ void atualizarProjeteis(float dt) {
 void desenharProjeteis(Texture2D notaPersonagem, Texture2D tiroInimigo) {
     for (Projectile *p = listaProjeteis; p != NULL; p = p->prox) {
         Texture2D sprite = (p->tipo == PROJETIL_PERSONAGEM) ? notaPersonagem : tiroInimigo;
-<<<<<<< HEAD
-
         Rectangle origem = {0, 0, 16, 16};
-
-=======
-        Rectangle origem = {0, 0, 16, 16};
->>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
         DrawTextureRec(sprite, origem, (Vector2){p->x, p->y}, WHITE);
     }
 }
