@@ -1,64 +1,71 @@
-<<<<<<< HEAD
 #include "item.h"
-#include "player.h"
-#include "raylib.h"
 #include <stdlib.h>
-#include <stddef.h>
-=======
-#include <stdlib.h>
-#include "item.h"
->>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
 
 static Heart *listaCoracoes = NULL;
 
-static void inserirCoracao(float x, float y) {
+void inserirCoracao(float x, float y) {
     Heart *novo = malloc(sizeof(Heart));
-<<<<<<< HEAD
-
-=======
->>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
     if (novo == NULL) return;
 
-    novo->x = x;
-    novo->y = y;
+    novo->rect = (Rectangle){x, y, 32, 32};
     novo->ativo = 1;
     novo->prox = listaCoracoes;
-
     listaCoracoes = novo;
 }
 
 void carregarItens(void) {
-    inserirCoracao(7 * 32, 9 * 32);
-    inserirCoracao(45 * 32, 9 * 32);
+    liberarItens();
+    inserirCoracao(500, 390);
+    inserirCoracao(850, 390);
 }
 
-void atualizarItens(Player *player) {
-    Rectangle playerRec = getPlayerRect(*player);
+void atualizarItens(Rectangle player, int *vidas) {
+    Heart *h = listaCoracoes;
 
-    for (Heart *h = listaCoracoes; h != NULL; h = h->prox) {
-        if (!h->ativo) continue;
-
-        Rectangle heartRec = {h->x, h->y, 32, 32};
-
-        if (CheckCollisionRecs(playerRec, heartRec)) {
-<<<<<<< HEAD
-            if (player->vidas < 3) {
-                player->vidas++;
-            }
-
-=======
-            if (player->vidas < 3) player->vidas++;
->>>>>>> af22300ea9d746e1528ad1e504e19b72c6c9cc9f
+    while (h != NULL) {
+        if (h->ativo && CheckCollisionRecs(player, h->rect)) {
             h->ativo = 0;
+
+            if (*vidas < 3) {
+                (*vidas)++;
+            }
         }
+
+        h = h->prox;
     }
 }
 
 void desenharItens(Texture2D heartTexture) {
-    for (Heart *h = listaCoracoes; h != NULL; h = h->prox) {
-        if (!h->ativo) continue;
+    Heart *h = listaCoracoes;
 
-        Rectangle origem = {0, 0, 32, 32};
-        DrawTextureRec(heartTexture, origem, (Vector2){h->x, h->y}, WHITE);
+    while (h != NULL) {
+        if (h->ativo) {
+            if (heartTexture.id > 0) {
+                DrawTexturePro(
+                    heartTexture,
+                    (Rectangle){0, 0, heartTexture.width, heartTexture.height},
+                    h->rect,
+                    (Vector2){0, 0},
+                    0,
+                    WHITE
+                );
+            } else {
+                DrawCircle(h->rect.x + 16, h->rect.y + 16, 12, RED);
+            }
+        }
+
+        h = h->prox;
     }
+}
+
+void liberarItens(void) {
+    Heart *h = listaCoracoes;
+
+    while (h != NULL) {
+        Heart *temp = h;
+        h = h->prox;
+        free(temp);
+    }
+
+    listaCoracoes = NULL;
 }

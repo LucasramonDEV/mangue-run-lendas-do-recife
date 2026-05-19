@@ -2,16 +2,17 @@
 #define ITEM_H
 
 #include "raylib.h"
-#include "player.h"
 
 typedef struct Heart {
-    float x, y;
+    Rectangle rect;
     int ativo;
     struct Heart *prox;
 } Heart;
 
+void inserirCoracao(float x, float y);
 void carregarItens(void);
-void atualizarItens(Player *player);
+void atualizarItens(Rectangle player, int *vidas);
 void desenharItens(Texture2D heartTexture);
+void liberarItens(void);
 
 #endif

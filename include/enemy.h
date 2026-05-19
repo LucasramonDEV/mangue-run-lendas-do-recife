@@ -2,41 +2,35 @@
 #define ENEMY_H
 
 #include "raylib.h"
-#include "player.h"
-
-#define ENEMY_LARGURA 32
-#define ENEMY_ALTURA 32
-
-#define HOMEM_SACO_IDLE 0
-#define HOMEM_SACO_ATTACK_L 1
-#define HOMEM_SACO_ATTACK_R 2
 
 typedef enum {
-    INIMIGO_HOMEM_SACO_AREIA
-} TipoInimigo;
-
-typedef enum {
-    INIMIGO_VIVO,
-    INIMIGO_MORRENDO
-} EstadoInimigo;
+    ENEMY_MELEE,
+    ENEMY_SHOOTER
+} EnemyType;
 
 typedef struct Enemy {
-    float x, y;
-    float velocidade;
-    float tempoAtaque;
-    float tempoFantasma;
-    int frameAtual;
-    int direcao;
-    TipoInimigo tipo;
-    EstadoInimigo estado;
-    struct Enemy *prox;
+    Rectangle rect;
+    EnemyType type;
+    float range;
+    int life;
+    int active;
+    struct Enemy *next;
 } Enemy;
 
+Enemy *CreateEnemy(float x, float y, EnemyType type);
+void InsertEnemy(Enemy **list, Enemy *enemy);
+void LoadEnemiesFromMap(Enemy **list, int mapIndex);
+void UpdateEnemies(Enemy *list, Rectangle player);
+void DrawEnemies(Enemy *list, Texture2D shooterTexture);
+void RemoveDeadEnemies(Enemy **list);
+void FreeEnemies(Enemy **list);
+int CountEnemies(Enemy *list);
+int CountEnemiesByType(Enemy *list, EnemyType type);
+
 void carregarInimigos(void);
-void atualizarInimigos(Player *player, float dt);
-void desenharInimigos(Texture2D sprite);
-Enemy *getListaInimigos(void);
-void inimigoVirarFantasma(Enemy *e);
-void removerInimigo(Enemy *alvo);
+void atualizarInimigos(Rectangle player, float dt);
+void desenharInimigos(Texture2D shooterTexture);
+
+extern Enemy *enemyList;
 
 #endif
