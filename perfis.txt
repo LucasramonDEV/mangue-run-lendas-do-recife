@@ -1,4 +1,4 @@
-dudu
-peo
-vazio
-vazio
+pedro 5
+gil 1
+Vazio 0
+Vazio 0

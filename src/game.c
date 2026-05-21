@@ -3,6 +3,7 @@
 #include "map.h"
 #include "enemy.h"
 #include "item.h"
+#include "aed.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -15,18 +16,36 @@
 #define JUMP_FORCE -13.0f
 #define CAMERA_ZOOM 1.65f
 #define PERFIL_MAX 4
+#define NOME_PERFIL_MAX 6
+
+#define FRAME_IDLE_1 0
+#define FRAME_IDLE_2 1
+#define FRAME_IDLE_3 2
+#define FRAME_IDLE_4 3
+#define FRAME_WALK_RIGHT_1 4
+#define FRAME_WALK_RIGHT_4 7
+#define FRAME_WALK_LEFT_1 8
+#define FRAME_WALK_LEFT_4 11
+#define FRAME_JUMP 12
+#define FRAME_FALL 13
+#define FRAME_DAMAGE 14
+#define FRAME_DEAD 15
+#define FRAME_ATTACK_RIGHT 16
+#define FRAME_ATTACK_LEFT 17
 
 typedef enum {
     TELA_MENU_INICIAL,
     TELA_NOVO_PERFIL,
     TELA_CARREGAR_PERFIL,
+    TELA_DIGITAR_PERFIL,
     TELA_CONFIGURACOES,
     TELA_MENU_FASES,
     TELA_CUTSCENE,
     TELA_JOGO,
     TELA_CONFIRMAR_SAIDA,
     TELA_FASE_COMPLETA,
-    TELA_GAME_OVER
+    TELA_GAME_OVER,
+    TELA_RANK
 } Tela;
 
 typedef struct {
@@ -41,20 +60,27 @@ typedef struct {
     float tempoAtaque;
 } PlayerLocal;
 
+typedef struct {
+    int existe;
+    float melhorTempo;
+    int melhorPontuacao;
+} RankingPerfil;
+
 static Tela telaAtual = TELA_MENU_INICIAL;
 static Tela telaAnterior = TELA_MENU_INICIAL;
 
 static int faseAtual = 0;
-static int faseDesbloqueada = TOTAL_MAPS - 1;
 static int modoNoturno = 0;
 static int perfilSelecionado = 0;
+static int faseRankAtual = 0;
 
-static char perfis[PERFIL_MAX][30] = {
-    "Teste",
-    "Vazio",
-    "Vazio",
-    "Vazio"
-};
+static char perfis[PERFIL_MAX][NOME_PERFIL_MAX] = {"Teste", "Vazio", "Vazio", "Vazio"};
+static int perfilFaseDesbloqueada[PERFIL_MAX] = {0, 0, 0, 0};
+static char novoPerfilNome[NOME_PERFIL_MAX] = "";
+static int novoPerfilTamanho = 0;
+static char mensagemPerfil[80] = "";
+
+static RankingPerfil rankingFases[TOTAL_MAPS][PERFIL_MAX];
 
 static float tempoCutscene = 0;
 static float tempoFase = 0;
@@ -69,21 +95,34 @@ static Rectangle tunel;
 static Camera2D camera;
 
 static Texture2D playerTexture;
-static Texture2D background;
+static Texture2D backgrounds[TOTAL_MAPS][TELAS_POR_MAPA];
 static Texture2D enemyShooter;
 static Texture2D heartTexture;
 
 static MapTextures mapTextures;
+
+static FaseAVL *arvoreFases = NULL;
+static RankingAVL *ranking = NULL;
+static FilaEventos filaEventos;
+static PilhaTelas pilhaCheckpoints;
+static TelaCircular *listaTelas = NULL;
+static TelaCircular *telaAtualCircular = NULL;
+static int checkpointTelaAtual = 0;
+
+static const char *nomesFases[TOTAL_MAPS] = {
+    "Boa Viagem",
+    "Casa Forte",
+    "Jaqueira",
+    "Gracas",
+    "Bom Jesus",
+    "Marco Zero"
+};
 
 static const char *cutscenes[TOTAL_MAPS][4] = {
     {"Praia de Boa Viagem", "Chico chega na orla apos ouvir um chamado estranho.", "Cada tunel leva para outra parte da praia.", "A ultima parte possui a porta final da missao."},
     {"Praca de Casa Forte", "A energia das lendas segue para Casa Forte.", "Os tuneis conectam pracas e caminhos diferentes.", "Continue avancando ate chegar na porta final."},
     {"Parque da Jaqueira", "Na Jaqueira, o caminho se divide entre baixo e alto.", "Cada tela representa uma parte do parque.", "Use os tuneis para atravessar todo o mapa."},
     {"Parque das Gracas", "As Gracas escondem uma rota tomada por sombras.", "As passagens ligam trechos diferentes da fase.", "A porta aparece somente na ultima tela."},
-    {"Praca do Derby", "No Derby, o movimento da cidade vira desafio.", "Avance por partes conectadas por tuneis.", "Chegue vivo ate a porta final."},
-    {"Agamenon", "Na Agamenon, o caos da avenida vira fase.", "Cada tunel representa uma travessia da avenida.", "Continue ate a ultima tela."},
-    {"Boa Vista", "A Boa Vista guarda historias antigas nas ruas.", "Passe pelos tuneis e avance pelo centro.", "A ultima tela encerra a missao."},
-    {"Forte das Cinco Pontas", "No Forte, o Recife antigo ganha um ar de batalha.", "Cada parte da fase fica conectada por tuneis.", "A porta fica no fim do percurso."},
     {"Rua do Bom Jesus", "Na Rua do Bom Jesus, a cidade fica mais misteriosa.", "Os tuneis levam por trechos da rua antiga.", "Atravesse ate encontrar a saida."},
     {"Marco Zero", "No Marco Zero, todas as lendas se encontram.", "As telas finais formam a ultima travessia.", "Chegue ate a porta e encerre a jornada."}
 };
@@ -98,16 +137,188 @@ static Color corTexto(void) {
 
 static void salvarConfiguracoes(void) {
     FILE *f = fopen("config.txt", "w");
-    if (f == NULL) return;
+    if (!f) return;
     fprintf(f, "%d\n", modoNoturno);
     fclose(f);
 }
 
 static void carregarConfiguracoes(void) {
     FILE *f = fopen("config.txt", "r");
-    if (f == NULL) return;
+    if (!f) return;
     fscanf(f, "%d", &modoNoturno);
     fclose(f);
+}
+
+static void limparRankingPerfil(int perfil) {
+    for (int fase = 0; fase < TOTAL_MAPS; fase++) {
+        rankingFases[fase][perfil].existe = 0;
+        rankingFases[fase][perfil].melhorTempo = 0;
+        rankingFases[fase][perfil].melhorPontuacao = 0;
+    }
+}
+
+static void carregarRankingArquivo(void) {
+    FILE *f = fopen("ranking.txt", "r");
+
+    for (int i = 0; i < TOTAL_MAPS; i++) {
+        for (int j = 0; j < PERFIL_MAX; j++) {
+            rankingFases[i][j].existe = 0;
+            rankingFases[i][j].melhorTempo = 0;
+            rankingFases[i][j].melhorPontuacao = 0;
+        }
+    }
+
+    if (!f) return;
+
+    for (int fase = 0; fase < TOTAL_MAPS; fase++) {
+        for (int perfil = 0; perfil < PERFIL_MAX; perfil++) {
+            fscanf(
+                f,
+                "%d %f %d",
+                &rankingFases[fase][perfil].existe,
+                &rankingFases[fase][perfil].melhorTempo,
+                &rankingFases[fase][perfil].melhorPontuacao
+            );
+        }
+    }
+
+    fclose(f);
+}
+
+static void salvarRankingArquivo(void) {
+    FILE *f = fopen("ranking.txt", "w");
+    if (!f) return;
+
+    for (int fase = 0; fase < TOTAL_MAPS; fase++) {
+        for (int perfil = 0; perfil < PERFIL_MAX; perfil++) {
+            fprintf(
+                f,
+                "%d %.2f %d\n",
+                rankingFases[fase][perfil].existe,
+                rankingFases[fase][perfil].melhorTempo,
+                rankingFases[fase][perfil].melhorPontuacao
+            );
+        }
+    }
+
+    fclose(f);
+}
+
+static void salvarPerfis(void) {
+    FILE *f = fopen("perfis.txt", "w");
+    if (!f) return;
+
+    for (int i = 0; i < PERFIL_MAX; i++) {
+        fprintf(f, "%s %d\n", perfis[i], perfilFaseDesbloqueada[i]);
+    }
+
+    fclose(f);
+}
+
+static void carregarPerfisDoArquivo(void) {
+    FILE *f = fopen("perfis.txt", "r");
+
+    strcpy(perfis[0], "Teste");
+    strcpy(perfis[1], "Vazio");
+    strcpy(perfis[2], "Vazio");
+    strcpy(perfis[3], "Vazio");
+
+    perfilFaseDesbloqueada[0] = TOTAL_MAPS - 1;
+    perfilFaseDesbloqueada[1] = 0;
+    perfilFaseDesbloqueada[2] = 0;
+    perfilFaseDesbloqueada[3] = 0;
+
+    if (!f) {
+        salvarPerfis();
+    } else {
+        for (int i = 0; i < PERFIL_MAX; i++) {
+            char nomeTemp[NOME_PERFIL_MAX];
+            int desbloqueadaTemp;
+
+            if (fscanf(f, "%5s %d", nomeTemp, &desbloqueadaTemp) == 2) {
+                strcpy(perfis[i], nomeTemp);
+                perfilFaseDesbloqueada[i] = desbloqueadaTemp;
+
+                if (perfilFaseDesbloqueada[i] < 0) perfilFaseDesbloqueada[i] = 0;
+                if (perfilFaseDesbloqueada[i] >= TOTAL_MAPS) perfilFaseDesbloqueada[i] = TOTAL_MAPS - 1;
+            }
+        }
+
+        fclose(f);
+    }
+
+    if (strcmp(perfis[0], "Vazio") == 0) {
+        strcpy(perfis[0], "Teste");
+        perfilFaseDesbloqueada[0] = 0;
+    }
+    perfilFaseDesbloqueada[0] = TOTAL_MAPS - 1;
+    AED_InserirPerfil(perfis[0], TOTAL_MAPS - 1);
+    
+    for (int i = 0; i < PERFIL_MAX; i++) {
+        if (strcmp(perfis[i], "Vazio") != 0) {
+            AED_InserirPerfil(perfis[i], perfilFaseDesbloqueada[i]);
+        }
+    }
+}
+
+static int perfilExiste(char *nome) {
+    for (int i = 0; i < PERFIL_MAX; i++) {
+        if (strcmp(perfis[i], nome) == 0) return 1;
+    }
+
+    return AED_BuscarPerfil(nome) != NULL;
+}
+
+static int primeiroSlotVazio(void) {
+    for (int i = 0; i < PERFIL_MAX; i++) {
+        if (strcmp(perfis[i], "Vazio") == 0) return i;
+    }
+
+    return -1;
+}
+
+static void inicializarAEDJogo(void) {
+    AED_Inicializar();
+    AED_InicializarFila(&filaEventos);
+    AED_InicializarPilha(&pilhaCheckpoints);
+
+    for (int i = 0; i < TOTAL_MAPS; i++) {
+        arvoreFases = AED_InserirFase(arvoreFases, i, 1);
+    }
+
+    listaTelas = AED_CriarListaCircularTelas(TELAS_POR_MAPA);
+    telaAtualCircular = listaTelas;
+}
+
+static void carregarBackgrounds(void) {
+    char caminho[160];
+
+    for (int f = 0; f < TOTAL_MAPS; f++) {
+        for (int t = 0; t < TELAS_POR_MAPA; t++) {
+            backgrounds[f][t].id = 0;
+        }
+    }
+
+    for (int t = 0; t < TELAS_POR_MAPA; t++) {
+        sprintf(caminho, "assets/maps/01_boa_viagem/bv_background_%02d.png", t + 1);
+        backgrounds[0][t] = LoadTexture(caminho);
+
+        sprintf(caminho, "assets/maps/02_casa_forte/cf_background_%02d.png", t + 1);
+        backgrounds[1][t] = LoadTexture(caminho);
+
+        sprintf(caminho, "assets/maps/03_jaqueira/ja_background_%02d.png", t + 1);
+        backgrounds[2][t] = LoadTexture(caminho);
+    }
+}
+
+static void liberarBackgrounds(void) {
+    for (int f = 0; f < TOTAL_MAPS; f++) {
+        for (int t = 0; t < TELAS_POR_MAPA; t++) {
+            if (backgrounds[f][t].id > 0) {
+                UnloadTexture(backgrounds[f][t]);
+            }
+        }
+    }
 }
 
 static void desenharBotao(Rectangle r, const char *texto, Color cor) {
@@ -117,7 +328,11 @@ static void desenharBotao(Rectangle r, const char *texto, Color cor) {
 }
 
 static void atualizarCamera(void) {
-    camera.target = (Vector2){player.rect.x + player.rect.width / 2, player.rect.y + player.rect.height / 2};
+    camera.target = (Vector2){
+        player.rect.x + player.rect.width / 2,
+        player.rect.y + player.rect.height / 2
+    };
+
     camera.offset = (Vector2){SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f};
     camera.rotation = 0;
     camera.zoom = CAMERA_ZOOM;
@@ -137,6 +352,8 @@ static void carregarParteAtual(void) {
     Rectangle playerRect = {0, 0, PLAYER_W, PLAYER_H};
 
     mapaAtual = faseAtual;
+    telaMapaAtual = AED_ValorTelaAtual(telaAtualCircular);
+    checkpointTelaAtual = telaMapaAtual;
 
     FindPlayerStart(faseAtual, telaMapaAtual, &playerRect);
     FindDoor(faseAtual, telaMapaAtual, &porta);
@@ -146,10 +363,12 @@ static void carregarParteAtual(void) {
     player.velY = 0;
     player.noChao = 0;
     player.direcao = 1;
-    player.frame = 0;
+    player.frame = FRAME_IDLE_1;
     player.tempoAnimacao = 0;
     player.atacando = 0;
     player.tempoAtaque = 0;
+
+    AED_Empilhar(&pilhaCheckpoints, telaMapaAtual);
 
     LoadEnemiesFromMap(&enemyList, faseAtual);
     carregarItens();
@@ -161,9 +380,16 @@ static void carregarParteAtual(void) {
 }
 
 static void carregarFaseAtual(void) {
+    if (listaTelas != NULL) telaAtualCircular = listaTelas;
+
     telaMapaAtual = 0;
+    checkpointTelaAtual = 0;
     player.vidas = 3;
     tempoFase = 0;
+
+    AED_InicializarPilha(&pilhaCheckpoints);
+    AED_InicializarFila(&filaEventos);
+
     carregarParteAtual();
 }
 
@@ -176,7 +402,6 @@ static int checarColisaoMapa(Rectangle r) {
     for (int y = cima; y <= baixo; y++) {
         for (int x = esquerda; x <= direita; x++) {
             if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) return 1;
-
             if (IsSolidTile(GetMapLine(faseAtual, telaMapaAtual, y)[x])) return 1;
         }
     }
@@ -196,23 +421,83 @@ static int checarMortePorAbismo(Rectangle r) {
 static void reiniciarPosicaoPlayer(void) {
     Rectangle start = {0, 0, PLAYER_W, PLAYER_H};
 
+    /*
+        CORRECAO DO CHECKPOINT:
+
+        Antes essa funcao usava AED_Desempilhar(&pilhaCheckpoints, &telaCheckpoint).
+        Isso fazia a primeira morte voltar certo, mas removia o checkpoint da pilha.
+        Na segunda morte, o topo da pilha passava a ser a tela anterior.
+
+        Agora a morte nao desempilha checkpoint.
+        O checkpoint atual fica salvo em checkpointTelaAtual.
+        A pilha continua existindo como estrutura de AED do projeto,
+        mas nao e consumida toda vez que o jogador morre.
+    */
+
+    telaMapaAtual = checkpointTelaAtual;
+
     FindPlayerStart(faseAtual, telaMapaAtual, &start);
 
     player.rect = start;
     player.velY = 0;
     player.noChao = 0;
+    player.frame = FRAME_DAMAGE;
+    player.atacando = 0;
+    player.tempoAtaque = 0;
 
     atualizarCamera();
 }
 
 static void perderVida(void) {
-    player.vidas--;
+    AED_Enfileirar(&filaEventos, AED_EVENTO_DANO, 1);
+}
 
-    if (player.vidas <= 0) {
-        tempoGameOver = 0;
-        telaAtual = TELA_GAME_OVER;
-    } else {
-        reiniciarPosicaoPlayer();
+static void atualizarAnimacaoPlayer(float dx, float dt) {
+    player.tempoAnimacao += dt;
+
+    if (player.atacando) {
+        player.frame = player.direcao == 1 ? FRAME_ATTACK_RIGHT : FRAME_ATTACK_LEFT;
+        return;
+    }
+
+    if (!player.noChao && player.velY < 0) {
+        player.frame = FRAME_JUMP;
+        return;
+    }
+
+    if (!player.noChao && player.velY > 0) {
+        player.frame = FRAME_FALL;
+        return;
+    }
+
+    if (dx > 0) {
+        if (player.tempoAnimacao >= 0.10f) {
+            player.tempoAnimacao = 0;
+            player.frame++;
+            if (player.frame < FRAME_WALK_RIGHT_1 || player.frame > FRAME_WALK_RIGHT_4) {
+                player.frame = FRAME_WALK_RIGHT_1;
+            }
+        }
+        return;
+    }
+
+    if (dx < 0) {
+        if (player.tempoAnimacao >= 0.10f) {
+            player.tempoAnimacao = 0;
+            player.frame++;
+            if (player.frame < FRAME_WALK_LEFT_1 || player.frame > FRAME_WALK_LEFT_4) {
+                player.frame = FRAME_WALK_LEFT_1;
+            }
+        }
+        return;
+    }
+
+    if (player.tempoAnimacao >= 0.22f) {
+        player.tempoAnimacao = 0;
+        player.frame++;
+        if (player.frame < FRAME_IDLE_1 || player.frame > FRAME_IDLE_4) {
+            player.frame = FRAME_IDLE_1;
+        }
     }
 }
 
@@ -237,38 +522,13 @@ static void atualizarPlayerLocal(void) {
 
     if (player.atacando) {
         player.tempoAtaque -= dt;
-
-        if (player.tempoAtaque <= 0) {
-            player.atacando = 0;
-        }
-    }
-
-    player.tempoAnimacao += dt;
-
-    if (player.atacando) {
-        player.frame = player.direcao == 1 ? 12 : 13;
-    } else if (dx != 0) {
-        if (player.tempoAnimacao >= 0.10f) {
-            player.tempoAnimacao = 0;
-            player.frame++;
-
-            if (player.frame < 1 || player.frame > 4) {
-                player.frame = 1;
-            }
-        }
-    } else {
-        if (player.tempoAnimacao >= 0.25f) {
-            player.tempoAnimacao = 0;
-            player.frame = player.frame == 0 ? 5 : 0;
-        }
+        if (player.tempoAtaque <= 0) player.atacando = 0;
     }
 
     Rectangle testeX = player.rect;
     testeX.x += dx;
 
-    if (!checarColisaoMapa(testeX)) {
-        player.rect.x = testeX.x;
-    }
+    if (!checarColisaoMapa(testeX)) player.rect.x = testeX.x;
 
     if ((IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_W) || IsKeyPressed(KEY_UP)) && player.noChao) {
         player.velY = JUMP_FORCE;
@@ -288,7 +548,10 @@ static void atualizarPlayerLocal(void) {
         player.velY = 0;
     }
 
+    atualizarAnimacaoPlayer(dx, dt);
+
     if (checarMortePorAbismo(player.rect) || player.rect.y > MAP_HEIGHT * TILE_SIZE) {
+        player.frame = FRAME_DAMAGE;
         perderVida();
     }
 
@@ -297,13 +560,7 @@ static void atualizarPlayerLocal(void) {
 
 static void desenharPlayerLocal(void) {
     if (playerTexture.id > 0) {
-        Rectangle source = {
-            player.frame * 32,
-            0,
-            32 * player.direcao,
-            32
-        };
-
+        Rectangle source = {player.frame * 32, 0, 32, 32};
         DrawTexturePro(playerTexture, source, player.rect, (Vector2){0, 0}, 0, WHITE);
     } else {
         DrawRectangleRec(player.rect, GREEN);
@@ -316,7 +573,7 @@ static void desenharHUD(void) {
     sprintf(texto, "Perfil: %s", perfis[perfilSelecionado]);
     DrawText(texto, 20, 20, 20, BLACK);
 
-    sprintf(texto, "Fase: %d | Tela: %d/%d", faseAtual + 1, telaMapaAtual + 1, TELAS_POR_MAPA);
+    sprintf(texto, "Fase: %d/%d - %s | Tela: %d/%d", faseAtual + 1, TOTAL_MAPS, nomesFases[faseAtual], telaMapaAtual + 1, TELAS_POR_MAPA);
     DrawText(texto, 20, 45, 20, BLACK);
 
     sprintf(texto, "Vidas: %d", player.vidas);
@@ -325,58 +582,153 @@ static void desenharHUD(void) {
     sprintf(texto, "Tempo: %.1fs", tempoFase);
     DrawText(texto, 20, 95, 20, BLACK);
 
-    DrawText("P = sair | E = tunel/porta", 20, 120, 18, BLACK);
+    DrawText("P = sair | E = tunel/porta | K/L = ataque", 20, 120, 18, BLACK);
 }
 
 static void desenharMenuInicial(void) {
-    DrawText("MANGUE RUN: LENDAS DO RECIFE", 360, 85, 36, corTexto());
+    DrawText("MANGUE RUN: LENDAS DO RECIFE", 360, 70, 36, corTexto());
 
-    Rectangle novo = {490, 190, 300, 55};
-    Rectangle carregar = {490, 270, 300, 55};
-    Rectangle config = {490, 350, 300, 55};
+    Rectangle novo = {490, 160, 300, 55};
+    Rectangle carregar = {490, 235, 300, 55};
+    Rectangle config = {490, 310, 300, 55};
+    Rectangle rank = {490, 385, 300, 55};
 
     desenharBotao(novo, "Novo perfil", GOLD);
     desenharBotao(carregar, "Carregar perfil", GREEN);
     desenharBotao(config, "Configuracoes", SKYBLUE);
+    desenharBotao(rank, "Rank", ORANGE);
 
     Vector2 mouse = GetMousePosition();
 
-    if (CheckCollisionPointRec(mouse, novo) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) telaAtual = TELA_NOVO_PERFIL;
+    if (CheckCollisionPointRec(mouse, novo) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        novoPerfilNome[0] = '\0';
+        novoPerfilTamanho = 0;
+        mensagemPerfil[0] = '\0';
+        telaAtual = TELA_DIGITAR_PERFIL;
+    }
+
     if (CheckCollisionPointRec(mouse, carregar) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) telaAtual = TELA_CARREGAR_PERFIL;
     if (CheckCollisionPointRec(mouse, config) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) telaAtual = TELA_CONFIGURACOES;
+    if (CheckCollisionPointRec(mouse, rank) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) telaAtual = TELA_RANK;
+}
+
+static void desenharTelaDigitarPerfil(void) {
+    DrawText("CRIAR NOVO PERFIL", 450, 90, 34, corTexto());
+    DrawText("Digite ate 5 caracteres e pressione ENTER", 390, 160, 24, corTexto());
+
+    Rectangle campo = {470, 230, 340, 65};
+    DrawRectangleRec(campo, RAYWHITE);
+    DrawRectangleLinesEx(campo, 2, BLACK);
+    DrawText(novoPerfilNome, campo.x + 20, campo.y + 18, 28, BLACK);
+
+    DrawText(mensagemPerfil, 405, 320, 22, RED);
+    DrawText("BACKSPACE apaga | ESC volta", 455, 390, 22, corTexto());
+
+    int tecla = GetCharPressed();
+
+    while (tecla > 0) {
+        if (tecla >= 33 && tecla <= 126 && novoPerfilTamanho < 5) {
+            novoPerfilNome[novoPerfilTamanho] = (char)tecla;
+            novoPerfilTamanho++;
+            novoPerfilNome[novoPerfilTamanho] = '\0';
+        }
+
+        tecla = GetCharPressed();
+    }
+
+    if (IsKeyPressed(KEY_BACKSPACE) && novoPerfilTamanho > 0) {
+        novoPerfilTamanho--;
+        novoPerfilNome[novoPerfilTamanho] = '\0';
+    }
+
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        telaAtual = TELA_MENU_INICIAL;
+    }
+
+    if (IsKeyPressed(KEY_ENTER)) {
+        int slot = primeiroSlotVazio();
+
+        if (novoPerfilTamanho == 0) {
+            strcpy(mensagemPerfil, "Nome vazio nao permitido.");
+        } else if (strcmp(novoPerfilNome, "Vazio") == 0) {
+            strcpy(mensagemPerfil, "Esse nome e reservado.");
+        } else if (perfilExiste(novoPerfilNome)) {
+            strcpy(mensagemPerfil, "Esse nick ja existe.");
+        } else if (slot == -1) {
+            strcpy(mensagemPerfil, "Limite de 4 perfis atingido.");
+        } else {
+            strcpy(perfis[slot], novoPerfilNome);
+            perfilFaseDesbloqueada[slot] = 0;
+            AED_InserirPerfil(perfis[slot], 0);
+            salvarPerfis();
+
+            perfilSelecionado = slot;
+            telaAtual = TELA_MENU_FASES;
+        }
+    }
 }
 
 static void desenharSlotsPerfil(int criar) {
     DrawText(criar ? "NOVO PERFIL" : "CARREGAR PERFIL", 500, 70, 34, corTexto());
 
     for (int i = 0; i < PERFIL_MAX; i++) {
-        Rectangle slot = {420, 150 + i * 80, 440, 55};
+        Rectangle slot = {390, 150 + i * 80, 420, 55};
+        Rectangle botaoExcluir = {830, 150 + i * 80, 55, 55};
+
         Color cor = strcmp(perfis[i], "Vazio") == 0 ? LIGHTGRAY : GREEN;
 
         DrawRectangleRec(slot, cor);
         DrawRectangleLinesEx(slot, 2, BLACK);
 
-        char texto[80];
+        char texto[100];
         sprintf(texto, "Slot %d: %s", i + 1, perfis[i]);
-        DrawText(texto, slot.x + 20, slot.y + 16, 22, BLACK);
+        DrawText(texto, slot.x + 20, slot.y + 9, 20, BLACK);
+
+        if (strcmp(perfis[i], "Vazio") != 0) {
+            sprintf(texto, "Liberada: fase %d", perfilFaseDesbloqueada[i] + 1);
+            DrawText(texto, slot.x + 20, slot.y + 31, 17, BLACK);
+        }
+
+        if (!criar && strcmp(perfis[i], "Vazio") != 0) {
+            DrawRectangleRec(botaoExcluir, RED);
+            DrawRectangleLinesEx(botaoExcluir, 2, BLACK);
+            DrawText("X", botaoExcluir.x + 18, botaoExcluir.y + 13, 26, WHITE);
+        }
 
         if (CheckCollisionPointRec(GetMousePosition(), slot) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            if (criar && strcmp(perfis[i], "Vazio") == 0) {
-                sprintf(perfis[i], "Jogador %d", i + 1);
+            if (criar) {
+                telaAtual = TELA_DIGITAR_PERFIL;
+                return;
             }
 
             if (strcmp(perfis[i], "Vazio") != 0) {
-                perfilSelecionado = i;
-                telaAtual = TELA_MENU_FASES;
+                PerfilHash *p = AED_BuscarPerfil(perfis[i]);
+
+                if (p != NULL) {
+                    perfilSelecionado = i;
+                    perfilFaseDesbloqueada[i] = p->faseDesbloqueada;
+                    telaAtual = TELA_MENU_FASES;
+                }
             }
+        }
+
+        if (!criar &&
+            strcmp(perfis[i], "Vazio") != 0 &&
+            CheckCollisionPointRec(GetMousePosition(), botaoExcluir) &&
+            IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+            AED_RemoverPerfil(perfis[i]);
+            strcpy(perfis[i], "Vazio");
+            perfilFaseDesbloqueada[i] = 0;
+            limparRankingPerfil(i);
+            salvarPerfis();
+            salvarRankingArquivo();
+
+            if (perfilSelecionado == i) perfilSelecionado = 0;
         }
     }
 
     DrawText("BACKSPACE = voltar", 520, 500, 22, corTexto());
-
-    if (IsKeyPressed(KEY_BACKSPACE)) {
-        telaAtual = TELA_MENU_INICIAL;
-    }
+    if (IsKeyPressed(KEY_BACKSPACE)) telaAtual = TELA_MENU_INICIAL;
 }
 
 static void desenharConfiguracoes(void) {
@@ -410,22 +762,24 @@ static void desenharConfiguracoes(void) {
 }
 
 static void desenharMenuFases(void) {
-    DrawText("SELECIONAR FASE", 485, 60, 34, corTexto());
-    DrawText("Todas liberadas para teste.", 500, 110, 24, corTexto());
+    DrawText("SELECIONAR MISSAO", 465, 60, 34, corTexto());
 
     for (int i = 0; i < TOTAL_MAPS; i++) {
-        int x = 290 + (i % 5) * 140;
-        int y = 190 + (i / 5) * 100;
+        int x = 250 + (i % 3) * 260;
+        int y = 170 + (i / 3) * 120;
 
-        Rectangle botao = {x, y, 95, 55};
-        DrawRectangleRec(botao, GREEN);
+        FaseAVL *fase = AED_BuscarFase(arvoreFases, i);
+        int liberada = fase != NULL && fase->desbloqueada && i <= perfilFaseDesbloqueada[perfilSelecionado];
+
+        Rectangle botao = {x, y, 210, 70};
+        DrawRectangleRec(botao, liberada ? GREEN : GRAY);
         DrawRectangleLinesEx(botao, 2, BLACK);
 
-        char texto[20];
-        sprintf(texto, "%d", i + 1);
-        DrawText(texto, x + 38, y + 14, 26, BLACK);
+        char texto[80];
+        sprintf(texto, "%02d - %s", i + 1, nomesFases[i]);
+        DrawText(texto, x + 15, y + 22, 20, BLACK);
 
-        if (CheckCollisionPointRec(GetMousePosition(), botao) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        if (liberada && CheckCollisionPointRec(GetMousePosition(), botao) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
             faseAtual = i;
             carregarFaseAtual();
             tempoCutscene = 0;
@@ -433,7 +787,64 @@ static void desenharMenuFases(void) {
         }
     }
 
-    DrawText("BACKSPACE = voltar", 535, 450, 22, corTexto());
+    DrawText("Cada perfil desbloqueia missoes individualmente", 395, 430, 22, corTexto());
+    DrawText("BACKSPACE = voltar", 535, 465, 22, corTexto());
+
+    if (IsKeyPressed(KEY_BACKSPACE)) telaAtual = TELA_MENU_INICIAL;
+}
+
+static void desenharTelaRank(void) {
+    char texto[160];
+
+    DrawText("RANKING POR MISSAO", 425, 50, 36, corTexto());
+
+    Rectangle anterior = {250, 115, 180, 50};
+    Rectangle proxima = {850, 115, 180, 50};
+    Rectangle voltar = {530, 600, 220, 55};
+
+    desenharBotao(anterior, "< Missao", LIGHTGRAY);
+    desenharBotao(proxima, "Missao >", LIGHTGRAY);
+    desenharBotao(voltar, "Voltar", GOLD);
+
+    sprintf(texto, "%02d - %s", faseRankAtual + 1, nomesFases[faseRankAtual]);
+    DrawText(texto, 510, 125, 25, corTexto());
+
+    DrawText("Perfil", 320, 205, 24, corTexto());
+    DrawText("Melhor tempo", 560, 205, 24, corTexto());
+    DrawText("Pontuacao", 830, 205, 24, corTexto());
+
+    for (int i = 0; i < PERFIL_MAX; i++) {
+        int y = 260 + i * 65;
+
+        DrawText(perfis[i], 320, y, 24, corTexto());
+
+        if (strcmp(perfis[i], "Vazio") == 0 || !rankingFases[faseRankAtual][i].existe) {
+            DrawText("-", 610, y, 24, corTexto());
+            DrawText("-", 880, y, 24, corTexto());
+        } else {
+            sprintf(texto, "%.2fs", rankingFases[faseRankAtual][i].melhorTempo);
+            DrawText(texto, 590, y, 24, corTexto());
+
+            sprintf(texto, "%d", rankingFases[faseRankAtual][i].melhorPontuacao);
+            DrawText(texto, 870, y, 24, corTexto());
+        }
+    }
+
+    Vector2 mouse = GetMousePosition();
+
+    if (CheckCollisionPointRec(mouse, anterior) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        faseRankAtual--;
+        if (faseRankAtual < 0) faseRankAtual = TOTAL_MAPS - 1;
+    }
+
+    if (CheckCollisionPointRec(mouse, proxima) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        faseRankAtual++;
+        if (faseRankAtual >= TOTAL_MAPS) faseRankAtual = 0;
+    }
+
+    if (CheckCollisionPointRec(mouse, voltar) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+        telaAtual = TELA_MENU_INICIAL;
+    }
 
     if (IsKeyPressed(KEY_BACKSPACE)) {
         telaAtual = TELA_MENU_INICIAL;
@@ -454,10 +865,12 @@ static void desenharCutscene(void) {
 }
 
 static void desenharBackgroundFase(void) {
-    if (faseAtual == 0 && background.id > 0) {
+    Texture2D bg = backgrounds[faseAtual][telaMapaAtual];
+
+    if (bg.id > 0) {
         DrawTexturePro(
-            background,
-            (Rectangle){0, 0, background.width, background.height},
+            bg,
+            (Rectangle){0, 0, bg.width, bg.height},
             (Rectangle){0, 0, 1280, 576},
             (Vector2){0, 0},
             0,
@@ -493,12 +906,21 @@ static void desenharConfirmacaoSaida(void) {
 
     Vector2 mouse = GetMousePosition();
 
-    if (CheckCollisionPointRec(mouse, sim) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        telaAtual = TELA_MENU_FASES;
-    }
+    if (CheckCollisionPointRec(mouse, sim) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) telaAtual = TELA_MENU_FASES;
+    if (CheckCollisionPointRec(mouse, nao) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) telaAtual = telaAnterior;
+}
 
-    if (CheckCollisionPointRec(mouse, nao) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-        telaAtual = telaAnterior;
+static void atualizarRankingFase(void) {
+    int pontuacao = (vidasFinalizadas * 1000) + (int)(1000 - tempoFinalizado);
+    if (pontuacao < 0) pontuacao = vidasFinalizadas * 1000;
+
+    RankingPerfil *r = &rankingFases[faseAtual][perfilSelecionado];
+
+    if (!r->existe || tempoFinalizado < r->melhorTempo) {
+        r->existe = 1;
+        r->melhorTempo = tempoFinalizado;
+        r->melhorPontuacao = pontuacao;
+        salvarRankingArquivo();
     }
 }
 
@@ -506,7 +928,7 @@ static void desenharFaseCompleta(void) {
     char texto[100];
 
     DrawText("PARABENS!", 530, 160, 42, GREEN);
-    DrawText("Voce completou a fase!", 470, 230, 30, corTexto());
+    DrawText("Voce completou a missao!", 455, 230, 30, corTexto());
 
     sprintf(texto, "Tempo: %.1f segundos", tempoFinalizado);
     DrawText(texto, 500, 310, 26, corTexto());
@@ -514,18 +936,35 @@ static void desenharFaseCompleta(void) {
     sprintf(texto, "Vidas restantes: %d", vidasFinalizadas);
     DrawText(texto, 500, 350, 26, corTexto());
 
-    DrawText("Voltando para o menu de fases...", 455, 430, 24, BLUE);
+    DrawText("Ranking salvo e proxima missao liberada", 410, 390, 24, BLUE);
 }
 
 static void desenharGameOver(void) {
     DrawText("GAME OVER", 510, 220, 54, RED);
     DrawText("Voce perdeu as 3 vidas.", 500, 300, 28, corTexto());
-    DrawText("Voltando para a tela de fases...", 455, 360, 26, BLUE);
+    DrawText("Voltando para a tela de missoes...", 440, 360, 26, BLUE);
 }
 
 static void concluirFase(void) {
     tempoFinalizado = tempoFase;
     vidasFinalizadas = player.vidas;
+
+    atualizarRankingFase();
+
+    ranking = AED_InserirRanking(
+        ranking,
+        perfis[perfilSelecionado],
+        rankingFases[faseAtual][perfilSelecionado].melhorPontuacao,
+        tempoFinalizado
+    );
+
+    if (faseAtual + 1 < TOTAL_MAPS && perfilFaseDesbloqueada[perfilSelecionado] < faseAtual + 1) {
+        perfilFaseDesbloqueada[perfilSelecionado] = faseAtual + 1;
+        AED_InserirPerfil(perfis[perfilSelecionado], perfilFaseDesbloqueada[perfilSelecionado]);
+        salvarPerfis();
+    }
+
+    AED_Enfileirar(&filaEventos, AED_EVENTO_FASE_COMPLETA, faseAtual);
 
     tempoConclusao = 0;
     telaAtual = TELA_FASE_COMPLETA;
@@ -533,8 +972,30 @@ static void concluirFase(void) {
 
 static void avancarTunel(void) {
     if (telaMapaAtual < TELAS_POR_MAPA - 1) {
-        telaMapaAtual++;
-        carregarParteAtual();
+        AED_Enfileirar(&filaEventos, AED_EVENTO_TUNEL, telaMapaAtual);
+    }
+}
+
+static void processarEventosAED(void) {
+    EventoFila evento;
+
+    while (AED_Desenfileirar(&filaEventos, &evento)) {
+        if (evento.tipo == AED_EVENTO_DANO) {
+            player.vidas--;
+
+            if (player.vidas <= 0) {
+                player.frame = FRAME_DEAD;
+                tempoGameOver = 0;
+                telaAtual = TELA_GAME_OVER;
+            } else {
+                reiniciarPosicaoPlayer();
+            }
+        } else if (evento.tipo == AED_EVENTO_TUNEL) {
+            if (telaMapaAtual < TELAS_POR_MAPA - 1) {
+                telaMapaAtual = AED_AvancarTelaCircular(&telaAtualCircular);
+                carregarParteAtual();
+            }
+        }
     }
 }
 
@@ -556,27 +1017,31 @@ static void atualizarTelaJogo(float dt) {
 
     if (CheckCollisionRecs(player.rect, tunel) && IsKeyPressed(KEY_E)) {
         avancarTunel();
-        return;
     }
 
     if (CheckCollisionRecs(player.rect, porta) && IsKeyPressed(KEY_E)) {
         concluirFase();
     }
+
+    processarEventosAED();
 }
 
 void iniciarJogo(void) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Mangue Run: Lendas do Recife");
     SetTargetFPS(60);
 
+    inicializarAEDJogo();
     carregarConfiguracoes();
+    carregarPerfisDoArquivo();
+    carregarRankingArquivo();
 
     mapTextures.usarTextura = 0;
 
     playerTexture = LoadTexture("assets/player/playerMODEL.png");
-    background = LoadTexture("assets/maps/01_boa_viagem/background.png");
-    enemyShooter = LoadTexture("assets/maps/01_boa_viagem/enemy_shooter.png");
+    enemyShooter = LoadTexture("assets/maps/01_boa_viagem/bv_enemy_shoot.png");
     heartTexture = LoadTexture("assets/items/heart.png");
 
+    carregarBackgrounds();
     carregarFaseAtual();
 
     while (!WindowShouldClose()) {
@@ -585,17 +1050,14 @@ void iniciarJogo(void) {
         BeginDrawing();
         ClearBackground(corFundo());
 
-        if (telaAtual == TELA_MENU_INICIAL) {
-            desenharMenuInicial();
-        } else if (telaAtual == TELA_NOVO_PERFIL) {
-            desenharSlotsPerfil(1);
-        } else if (telaAtual == TELA_CARREGAR_PERFIL) {
-            desenharSlotsPerfil(0);
-        } else if (telaAtual == TELA_CONFIGURACOES) {
-            desenharConfiguracoes();
-        } else if (telaAtual == TELA_MENU_FASES) {
-            desenharMenuFases();
-        } else if (telaAtual == TELA_CUTSCENE) {
+        if (telaAtual == TELA_MENU_INICIAL) desenharMenuInicial();
+        else if (telaAtual == TELA_NOVO_PERFIL) desenharSlotsPerfil(1);
+        else if (telaAtual == TELA_DIGITAR_PERFIL) desenharTelaDigitarPerfil();
+        else if (telaAtual == TELA_CARREGAR_PERFIL) desenharSlotsPerfil(0);
+        else if (telaAtual == TELA_CONFIGURACOES) desenharConfiguracoes();
+        else if (telaAtual == TELA_MENU_FASES) desenharMenuFases();
+        else if (telaAtual == TELA_RANK) desenharTelaRank();
+        else if (telaAtual == TELA_CUTSCENE) {
             tempoCutscene += dt;
             desenharCutscene();
 
@@ -613,28 +1075,33 @@ void iniciarJogo(void) {
             tempoConclusao += dt;
             desenharFaseCompleta();
 
-            if (tempoConclusao >= 5.0f) {
-                telaAtual = TELA_MENU_FASES;
-            }
+            if (tempoConclusao >= 5.0f) telaAtual = TELA_MENU_FASES;
         } else if (telaAtual == TELA_GAME_OVER) {
             tempoGameOver += dt;
             desenharGameOver();
 
-            if (tempoGameOver >= 5.0f) {
-                telaAtual = TELA_MENU_FASES;
-            }
+            if (tempoGameOver >= 5.0f) telaAtual = TELA_MENU_FASES;
         }
 
         EndDrawing();
     }
 
     salvarConfiguracoes();
+    salvarPerfis();
+    salvarRankingArquivo();
+
     UnloadMapTextures(&mapTextures);
     FreeEnemies(&enemyList);
     liberarItens();
 
+    liberarBackgrounds();
+
+    AED_LiberarFases(arvoreFases);
+    AED_LiberarRanking(ranking);
+    AED_LiberarListaCircular(listaTelas);
+    AED_Finalizar();
+
     if (playerTexture.id > 0) UnloadTexture(playerTexture);
-    if (background.id > 0) UnloadTexture(background);
     if (enemyShooter.id > 0) UnloadTexture(enemyShooter);
     if (heartTexture.id > 0) UnloadTexture(heartTexture);
 

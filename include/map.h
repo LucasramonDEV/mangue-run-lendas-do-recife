@@ -5,7 +5,7 @@
 
 #define MAP_WIDTH 40
 #define MAP_HEIGHT 18
-#define TOTAL_MAPS 10
+#define TOTAL_MAPS 6
 #define TELAS_POR_MAPA 5
 #define TILE_SIZE 32
 
@@ -24,6 +24,7 @@
 #define TILE_SHOOTER 'T'
 #define TILE_DOOR 'Q'
 #define TILE_TUNNEL 'U'
+#define TILE_HEART 'H'
 
 extern int mapaAtual;
 extern int telaMapaAtual;
