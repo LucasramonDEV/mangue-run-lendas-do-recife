@@ -2,6 +2,7 @@
 #include "raylib.h"
 #include "map.h"
 #include "enemy.h"
+#include "projectile.h"
 #include "item.h"
 #include "aed.h"
 #include <stdio.h>
@@ -88,6 +89,7 @@ static float tempoConclusao = 0;
 static float tempoGameOver = 0;
 static float tempoFinalizado = 0;
 static int vidasFinalizadas = 0;
+static float tempoDanoPlayer = 0.0f;
 
 static PlayerLocal player;
 static Rectangle porta;
@@ -96,7 +98,6 @@ static Camera2D camera;
 
 static Texture2D playerTexture;
 static Texture2D backgrounds[TOTAL_MAPS][TELAS_POR_MAPA];
-static Texture2D enemyShooter;
 static Texture2D heartTexture;
 
 static MapTextures mapTextures;
@@ -290,8 +291,26 @@ static void inicializarAEDJogo(void) {
     telaAtualCircular = listaTelas;
 }
 
+static const char *pastasMapas[TOTAL_MAPS] = {
+    "01_boa_viagem",
+    "02_casa_forte",
+    "03_jaqueira",
+    "04_gracas",
+    "05_bom_jesus",
+    "06_marco_zero"
+};
+
+static const char *prefixosMapas[TOTAL_MAPS] = {
+    "bv",
+    "cf",
+    "ja",
+    "gc",
+    "bm",
+    "mz"
+};
+
 static void carregarBackgrounds(void) {
-    char caminho[160];
+    char caminho[180];
 
     for (int f = 0; f < TOTAL_MAPS; f++) {
         for (int t = 0; t < TELAS_POR_MAPA; t++) {
@@ -299,15 +318,18 @@ static void carregarBackgrounds(void) {
         }
     }
 
-    for (int t = 0; t < TELAS_POR_MAPA; t++) {
-        sprintf(caminho, "assets/maps/01_boa_viagem/bv_background_%02d.png", t + 1);
-        backgrounds[0][t] = LoadTexture(caminho);
+    for (int f = 0; f < TOTAL_MAPS; f++) {
+        for (int t = 0; t < TELAS_POR_MAPA; t++) {
+            sprintf(
+                caminho,
+                "assets/maps/%s/%s_background_%02d.png",
+                pastasMapas[f],
+                prefixosMapas[f],
+                t + 1
+            );
 
-        sprintf(caminho, "assets/maps/02_casa_forte/cf_background_%02d.png", t + 1);
-        backgrounds[1][t] = LoadTexture(caminho);
-
-        sprintf(caminho, "assets/maps/03_jaqueira/ja_background_%02d.png", t + 1);
-        backgrounds[2][t] = LoadTexture(caminho);
+            backgrounds[f][t] = LoadTexture(caminho);
+        }
     }
 }
 
@@ -444,12 +466,80 @@ static void reiniciarPosicaoPlayer(void) {
     player.frame = FRAME_DAMAGE;
     player.atacando = 0;
     player.tempoAtaque = 0;
+    tempoDanoPlayer = 1.0f;
 
     atualizarCamera();
 }
 
 static void perderVida(void) {
     AED_Enfileirar(&filaEventos, AED_EVENTO_DANO, 1);
+}
+
+static void aplicarDanoPlayer(void) {
+    if (tempoDanoPlayer > 0.0f) return;
+
+    tempoDanoPlayer = 1.0f;
+    player.frame = FRAME_DAMAGE;
+    perderVida();
+}
+
+static Rectangle getProjetilRect(Projectile *p) {
+    return (Rectangle){p->x, p->y, 16, 8};
+}
+
+static void checarColisaoMeleeComPlayer(void) {
+    Enemy *e = enemyList;
+
+    while (e != NULL) {
+        if (e->type == ENEMY_MELEE && CheckCollisionRecs(player.rect, e->rect)) {
+            aplicarDanoPlayer();
+            return;
+        }
+
+        e = e->next;
+    }
+}
+
+static void checarColisaoProjeteis(void) {
+    Projectile *p = getListaProjeteis();
+
+    while (p != NULL) {
+        Projectile *proximo = p->prox;
+        Rectangle projetilRect = getProjetilRect(p);
+
+        if (p->tipo == PROJETIL_PERSONAGEM) {
+            Enemy *e = enemyList;
+
+            while (e != NULL) {
+                if (CheckCollisionRecs(projetilRect, e->rect)) {
+                    e->life = 0;
+                    removerProjetil(p);
+                    break;
+                }
+
+                e = e->next;
+            }
+        } else if (p->tipo == PROJETIL_INIMIGO) {
+            if (CheckCollisionRecs(projetilRect, player.rect)) {
+                removerProjetil(p);
+                aplicarDanoPlayer();
+            }
+        }
+
+        p = proximo;
+    }
+
+    RemoveDeadEnemies(&enemyList);
+}
+
+static void atualizarCombate(float dt) {
+    if (tempoDanoPlayer > 0.0f) {
+        tempoDanoPlayer -= dt;
+        if (tempoDanoPlayer < 0.0f) tempoDanoPlayer = 0.0f;
+    }
+
+    checarColisaoMeleeComPlayer();
+    checarColisaoProjeteis();
 }
 
 static void atualizarAnimacaoPlayer(float dx, float dt) {
@@ -515,9 +605,18 @@ static void atualizarPlayerLocal(void) {
         player.direcao = 1;
     }
 
-    if (IsKeyPressed(KEY_K) || IsKeyPressed(KEY_L)) {
+    if (IsKeyPressed(KEY_K)) {
         player.atacando = 1;
         player.tempoAtaque = 0.25f;
+        player.direcao = -1;
+        dispararProjetil(player.rect.x, player.rect.y + player.rect.height / 2.0f, -1, PROJETIL_PERSONAGEM);
+    }
+
+    if (IsKeyPressed(KEY_L)) {
+        player.atacando = 1;
+        player.tempoAtaque = 0.25f;
+        player.direcao = 1;
+        dispararProjetil(player.rect.x + player.rect.width, player.rect.y + player.rect.height / 2.0f, 1, PROJETIL_PERSONAGEM);
     }
 
     if (player.atacando) {
@@ -885,11 +984,12 @@ static void desenharTelaJogo(void) {
     BeginMode2D(camera);
     desenharBackgroundFase();
     DrawMap(faseAtual, telaMapaAtual, mapTextures);
-    desenharInimigos(enemyShooter);
     desenharItens(heartTexture);
+    desenharInimigos();
     desenharPlayerLocal();
+    desenharProjeteis((Texture2D){0}, (Texture2D){0});
     EndMode2D();
-
+    
     desenharHUD();
 }
 
@@ -1013,6 +1113,8 @@ static void atualizarTelaJogo(float dt) {
     if (telaAtual != TELA_JOGO) return;
 
     atualizarInimigos(player.rect, dt);
+    atualizarProjeteis(dt);
+    atualizarCombate(dt);
     atualizarItens(player.rect, &player.vidas);
 
     if (CheckCollisionRecs(player.rect, tunel) && IsKeyPressed(KEY_E)) {
@@ -1038,8 +1140,8 @@ void iniciarJogo(void) {
     mapTextures.usarTextura = 0;
 
     playerTexture = LoadTexture("assets/player/playerMODEL.png");
-    enemyShooter = LoadTexture("assets/maps/01_boa_viagem/bv_enemy_shoot.png");
     heartTexture = LoadTexture("assets/items/heart.png");
+    carregarTexturasInimigos();
 
     carregarBackgrounds();
     carregarFaseAtual();
@@ -1102,8 +1204,8 @@ void iniciarJogo(void) {
     AED_Finalizar();
 
     if (playerTexture.id > 0) UnloadTexture(playerTexture);
-    if (enemyShooter.id > 0) UnloadTexture(enemyShooter);
     if (heartTexture.id > 0) UnloadTexture(heartTexture);
+    descarregarTexturasInimigos();
 
     CloseWindow();
 }
