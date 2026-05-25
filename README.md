@@ -23,7 +23,8 @@ O jogo possui 6 fases principais:
 6. Marco Zero
 
 Cada fase possui backgrounds próprios, inimigos próprios e 5 telas diferentes.
-
+Cada Inimigo é inspirado em uma Lenda Urbana da Cidade do Recife
+Alguns exemplos são : O Velho do Saco da Areia,Fantasma da Batalha,O Frade da Capela,O Frade da Capela,Papa Figo e Boca de ouro
 ---
 
 ## Tecnologias utilizadas
