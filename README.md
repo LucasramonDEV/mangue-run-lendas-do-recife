@@ -1,5 +1,4 @@
-
-E se quiser o README inteiro já com essa parte melhorada, usa este:
+Mangue run : Lendas do Recife
 
 ```md
 # Mangue Run: Lendas do Recife
