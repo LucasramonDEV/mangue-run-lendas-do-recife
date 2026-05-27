@@ -895,6 +895,21 @@ static void desenharMenuFases(void) {
 static void desenharTelaRank(void) {
     char texto[160];
 
+    int pontuacoesOrdenadas[PERFIL_MAX];
+    int usado[PERFIL_MAX];
+
+    for (int i = 0; i < PERFIL_MAX; i++) {
+        usado[i] = 0;
+
+        if (strcmp(perfis[i], "Vazio") != 0 && rankingFases[faseRankAtual][i].existe) {
+            pontuacoesOrdenadas[i] = rankingFases[faseRankAtual][i].melhorPontuacao;
+        } else {
+            pontuacoesOrdenadas[i] = -1;
+        }
+    }
+
+    AED_QuickSort(pontuacoesOrdenadas, 0, PERFIL_MAX - 1);
+
     DrawText("RANKING POR MISSAO", 425, 50, 36, corTexto());
 
     Rectangle anterior = {250, 115, 180, 50};
@@ -908,37 +923,71 @@ static void desenharTelaRank(void) {
     sprintf(texto, "%02d - %s", faseRankAtual + 1, nomesFases[faseRankAtual]);
     DrawText(texto, 510, 125, 25, corTexto());
 
+    DrawText("Pos.", 230, 205, 24, corTexto());
     DrawText("Perfil", 320, 205, 24, corTexto());
     DrawText("Melhor tempo", 560, 205, 24, corTexto());
     DrawText("Pontuacao", 830, 205, 24, corTexto());
 
-    for (int i = 0; i < PERFIL_MAX; i++) {
-        int y = 260 + i * 65;
+    int linha = 0;
 
-        DrawText(perfis[i], 320, y, 24, corTexto());
+    for (int p = PERFIL_MAX - 1; p >= 0; p--) {
+        int pontuacaoAtual = pontuacoesOrdenadas[p];
 
-        if (strcmp(perfis[i], "Vazio") == 0 || !rankingFases[faseRankAtual][i].existe) {
-            DrawText("-", 610, y, 24, corTexto());
-            DrawText("-", 880, y, 24, corTexto());
-        } else {
-            sprintf(texto, "%.2fs", rankingFases[faseRankAtual][i].melhorTempo);
+        if (pontuacaoAtual < 0) {
+            continue;
+        }
+
+        int perfilEncontrado = -1;
+
+        for (int i = 0; i < PERFIL_MAX; i++) {
+            if (!usado[i] &&
+                strcmp(perfis[i], "Vazio") != 0 &&
+                rankingFases[faseRankAtual][i].existe &&
+                rankingFases[faseRankAtual][i].melhorPontuacao == pontuacaoAtual) {
+                perfilEncontrado = i;
+                usado[i] = 1;
+                break;
+            }
+        }
+
+        if (perfilEncontrado != -1) {
+            int y = 260 + linha * 65;
+
+            sprintf(texto, "%d", linha + 1);
+            DrawText(texto, 240, y, 24, corTexto());
+
+            DrawText(perfis[perfilEncontrado], 320, y, 24, corTexto());
+
+            sprintf(texto, "%.2fs", rankingFases[faseRankAtual][perfilEncontrado].melhorTempo);
             DrawText(texto, 590, y, 24, corTexto());
 
-            sprintf(texto, "%d", rankingFases[faseRankAtual][i].melhorPontuacao);
+            sprintf(texto, "%d", rankingFases[faseRankAtual][perfilEncontrado].melhorPontuacao);
             DrawText(texto, 870, y, 24, corTexto());
+
+            linha++;
         }
+    }
+
+    if (linha == 0) {
+        DrawText("Nenhum ranking registrado para esta missao.", 390, 300, 24, corTexto());
     }
 
     Vector2 mouse = GetMousePosition();
 
     if (CheckCollisionPointRec(mouse, anterior) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         faseRankAtual--;
-        if (faseRankAtual < 0) faseRankAtual = TOTAL_MAPS - 1;
+
+        if (faseRankAtual < 0) {
+            faseRankAtual = TOTAL_MAPS - 1;
+        }
     }
 
     if (CheckCollisionPointRec(mouse, proxima) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
         faseRankAtual++;
-        if (faseRankAtual >= TOTAL_MAPS) faseRankAtual = 0;
+
+        if (faseRankAtual >= TOTAL_MAPS) {
+            faseRankAtual = 0;
+        }
     }
 
     if (CheckCollisionPointRec(mouse, voltar) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
